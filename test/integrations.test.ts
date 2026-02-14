@@ -6,8 +6,8 @@ import { assert, beforeAll, describe, it } from "vitest"
 import path from "node:path"
 import fs from "node:fs"
 import cp from "child_process"
-import eslintCompat from "./lib/eslint-compat"
-import ESLintRaw from "eslint"
+import { ESLint } from "eslint"
+import semver from "semver"
 
 //------------------------------------------------------------------------------
 // Helpers
@@ -33,13 +33,25 @@ describe("Integration tests", () => {
     })
     for (const target of fs.readdirSync(FIXTURE_DIR)) {
         it(target, async () => {
-            let ESLint = eslintCompat(ESLintRaw).ESLint
+            let ESLintForTest = ESLint
             if (fs.existsSync(path.join(FIXTURE_DIR, target, "package.json"))) {
                 const originalCwd = process.cwd()
                 try {
                     process.chdir(path.join(FIXTURE_DIR, target))
-                    cp.execSync("npm i", { stdio: "inherit" })
-                    ESLint = eslintCompat(
+                    cp.execSync("npm i --force", { stdio: "inherit" })
+
+                    // eslint-disable-next-line @typescript-eslint/no-require-imports
+                    const eslintVersion = require(
+                        path.join(
+                            FIXTURE_DIR,
+                            target,
+                            "node_modules/eslint/package.json",
+                        ),
+                    ).version
+                    if (semver.lt(ESLint.version, eslintVersion)) {
+                        return
+                    }
+                    ESLintForTest =
                         // eslint-disable-next-line @typescript-eslint/no-require-imports
                         require(
                             path.join(
@@ -47,14 +59,13 @@ describe("Integration tests", () => {
                                 target,
                                 "node_modules/eslint",
                             ),
-                        ),
-                    ).ESLint
+                        ).ESLint
                 } finally {
                     process.chdir(originalCwd)
                 }
             }
             const cwd = path.join(FIXTURE_DIR, target)
-            const cli = new ESLint({
+            const cli = new ESLintForTest({
                 cwd,
             })
             const report = await cli.lintFiles(["**/*.vue"])
@@ -83,7 +94,7 @@ describe("Integration tests", () => {
             }
 
             function normalizeReport(
-                result: ESLintRaw.ESLint.LintResult[],
+                result: ESLint.LintResult[],
                 option: { withoutMessage?: boolean } = {},
             ) {
                 return result
